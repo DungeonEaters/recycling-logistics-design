@@ -62,9 +62,16 @@ Cada uno de `recycling-backend`, `recycling-web`, `recycling-mobile` implementa 
 
 - **`.github/workflows/ci.yml`**: en `pull_request` y `push` a `main`. Jobs: test/lint (pytest o `npm test`/`npm run build` según el repo). No publica nada; es el status check requerido para mergear a `main` (nombre exacto del check requerido = nombre del job, p. ej. `Backend (pytest)`, `Web (build)`, `Mobile (test + build)`).
 - **`.github/workflows/release.yml`**: `workflow_dispatch` con inputs `channel` (`test`|`release`), `version` (SemVer) y `ref` (rama/commit a construir, default `main`). Dos jobs mutuamente excluyentes vía `if: inputs.channel == 'test' | 'release'`:
-  - `test-channel`: valida SemVer (con o sin sufijo), build multi-stage ARM64 (QEMU + Buildx), push a GHCR como `test-<version>` + `sha-<commit>`. No toca Git.
+  - `test-channel`: valida SemVer (con o sin sufijo), build multi-stage
+    `linux/amd64` + `linux/arm64` (QEMU + Buildx), push a GHCR como
+    `test-<version>` + `sha-<commit>`. No toca Git.
   - `release-channel`: valida SemVer estricto (sin sufijo), crea y pushea el tag `vX.Y.Z`, build + push a GHCR como `release-v<version>` + `latest` + `sha-<commit>`, crea el GitHub Release con notas autogeneradas.
   - Login a GHCR con `GITHUB_TOKEN` (`permissions: contents: write, packages: write` — `contents: write` es necesario para que `release-channel` pueda pushear el tag y crear el Release).
+
+La imagen nueva del backend es una manifest list multi-arquitectura: OCI A1 descarga
+`arm64` y una VM AMD temporal de test descarga `amd64` para el mismo tag inmutable.
+Los tags de backend publicados antes de este cambio permanecen solo ARM64 y no sirven
+para la VM AMD.
 
 Imagen resultante: `ghcr.io/dungeoneaters/recycling-backend`, `ghcr.io/dungeoneaters/recycling-web`, `ghcr.io/dungeoneaters/recycling-mobile` (ya reflejado en `recycling-infra/.env.production.example`).
 
@@ -93,4 +100,3 @@ Ejecución real del pipeline de `release.yml` (canal test, `recycling-backend`),
 - Digest: `sha256:f316b364debdf5885f3584be02bfa838b86335e8697c74f57a486b3f44131ece`
 
 Ver ADR-018 y ADR-020 en [decisions.md](../architecture/decisions.md) para el contexto completo, incluyendo el incidente de bypass de branch protection detectado y revertido en `recycling-backend` (PR de revert: https://github.com/DungeonEaters/recycling-backend/pull/2).
-

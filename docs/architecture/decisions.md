@@ -60,10 +60,18 @@ Fecha de todas las decisiones: 2026-10-04 (origen: [conversation-gemini.md](../r
 - **Motivo:** Vite es servidor de desarrollo, no de producción. Nginx reduce tamaño de imagen y soporta las rutas SPA con `try_files`.
 - **Consecuencia:** `VITE_API_URL` se define al construir la imagen; cada despliegue genera una imagen para el dominio de producción.
 
-## ADR-014 — GHCR y despliegue ARM64 por GitHub Actions
-- **Decisión:** el push a `main` construye imágenes `linux/arm64` para `api`, `web` y `mobile`, las etiqueta con SHA y las publica en GHCR. El job de despliegue se conecta por SSH a Oracle Cloud, actualiza el tag y ejecuta Compose.
-- **Motivo:** la VM Always Free es ARM64; etiquetar con SHA permite saber exactamente qué commit corre.
-- **Consecuencia:** la VM requiere un token de solo lectura de paquetes para descargar imágenes privadas; secretos permanecen en `.env` de la VM.
+## ADR-014 — GHCR e imágenes multi-arquitectura
+- **Decisión:** cada tag nuevo del backend publica una manifest list con
+  `linux/amd64` y `linux/arm64`, además de un tag SHA inmutable. El mecanismo de
+  despliegue actual se ejecuta desde una estación administrativa autorizada; la
+  automatización futura reutilizará ese flujo desde un runner self-hosted.
+- **Motivo:** producción usa OCI A1 ARM64, mientras que la VM temporal disponible para
+  validar runtime es AMD64. Un único tag inmutable permite que cada host descargue la
+  variante correcta sin emulación.
+- **Consecuencia:** los tags históricos solo ARM64 no pueden ejecutarse en AMD64; hay
+  que publicar un tag nuevo después de aprobar el pipeline multi-arquitectura. La VM
+  requiere un token de solo lectura de paquetes para descargar imágenes privadas;
+  secretos permanecen en `.env` de la VM.
 
 ## ADR-015 — Caddy como reverse proxy de producción
 - **Decisión:** Caddy es el único servicio que publica 80/443. Sirve tres dominios: panel en el dominio principal, app móvil en `driver.` y API en `api.`.
