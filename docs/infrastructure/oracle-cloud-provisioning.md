@@ -17,7 +17,7 @@ Internet
                     |
                     +-- production: web, mobile, api, PostgreSQL
 
-GitHub Actions -- SSH manual deploy --> Oracle VM
+Estación administrativa -- SSH restringido --> Oracle VM
 GitHub Actions -- ARM64 images --> GHCR --> Oracle VM pull
 ```
 
@@ -43,7 +43,8 @@ No usar la clave personal descargada al crear la instancia como secreto de GitHu
 
 1. Crear una clave `ed25519` exclusiva para administración/despliegue.
 2. Entregar solo la clave pública al Terraform/OCI.
-3. Mantener la privada cifrada en un gestor de secretos; copiarla a GitHub Environment Secrets solo si se acepta el acceso SSH directo desde Actions.
+3. Mantener la privada cifrada en un gestor de secretos local. No abrir SSH a los
+   rangos dinámicos de GitHub-hosted runners.
 4. Guardar la host key verificada con:
 
 ```bash
@@ -119,31 +120,25 @@ Completar en cada `.env`:
 
 Usar contraseñas y secretos generados criptográficamente. No reutilizar los de test en producción.
 
-## 6. GitHub Environments y pipelines
+## 6. Publicación de imágenes y despliegue de test
 
-Crear Environments `test` y `production` en el repo de aplicación. Producción debe requerir revisión manual.
+La infraestructura no contiene secretos de aplicación: Terraform crea recursos y
+cloud-init prepara Docker, pero no ejecuta `remote-exec` ni administra `.env`.
 
-Secrets por Environment:
+Flujo de test:
 
-| Secret | Uso |
-|---|---|
-| `SERVER_HOST` | IP o DNS de la VM |
-| `SERVER_USER` | Usuario SSH, normalmente `ubuntu` |
-| `SSH_PRIVATE_KEY` | Clave de despliegue exclusiva |
-| `SSH_KNOWN_HOSTS` | Host key verificada |
-| `GHCR_USERNAME` | Identidad con lectura del package |
-| `GHCR_PULL_TOKEN` | PAT mínimo `read:packages` para la VM |
+1. **CI and image build:** los repositorios de aplicación publican una imagen
+   inmutable con tag `test-*` en GHCR.
+2. Desde una estación administrativa incluida en `ADMIN_CIDRS`, ejecutar
+   `make deploy-test-check` y luego
+   `make deploy-test-api IMAGE_TAG=<tag>` en `recycling-infra`.
+3. El script pide un PAT clásico limitado a `read:packages`, lo transmite por stdin
+   para `docker login` y genera secretos de prueba dentro de la VM con permisos `0600`.
+4. El script comprueba `http://<ip>/health`. Repetirlo con un tag anterior realiza un
+   rollback de aplicación.
 
-Variable por Environment:
-
-| Variable | Test | Producción |
-|---|---|---|
-| `DEPLOY_PATH` | `/opt/recycling-logistics/test` | `/opt/recycling-logistics/production` |
-
-Flujo:
-
-1. **CI and image build:** valida código. Ejecución manual publica solo `api`, `web`, `mobile` o `all`, con tag `test-*` o `release-*`.
-2. **Deploy published images:** ejecución manual; recibe Environment, tag existente y componente. Descarga desde GHCR y ejecuta Compose. No construye código en la VM.
+Un runner self-hosted aislado podrá reutilizar el script una vez validado el flujo.
+No se permite SSH desde GitHub-hosted runners: sus IPs no son una allowlist estable.
 
 ## 7. Operación y recuperación
 

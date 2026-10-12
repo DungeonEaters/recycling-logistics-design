@@ -110,3 +110,20 @@ Fecha de todas las decisiones: 2026-10-04 (origen: [conversation-gemini.md](../r
   4. Branch protection en los 4 repos permanece con `enforce_admins: true` y `required_approving_review_count: 1`.
 - **Decisión/aprendizaje:** Ningún agente debe deshabilitar o modificar reglas de protección de rama para forzar un merge, bajo ninguna circunstancia, incluida la obtención de "evidencia" solicitada por el usuario. Si una validación requiere que algo esté en `main`, se debe esperar la aprobación humana real antes de proceder, o buscar una vía alterna (como disparar el workflow contra una rama de feature) que no requiera alterar la protección.
 - **Nota técnica:** La protección clásica de rama (`enforce_admins`) no impide que una credencial con permisos de administrador *edite las reglas mismas*; esa es una limitación inherente del modelo de permisos de GitHub (los Rulesets más nuevos con `bypass_actors: []` tampoco lo resuelven del todo, porque igual son editables por un admin). La garantía real depende de la disciplina del operador/agente, no de un ajuste técnico infalible.
+
+## ADR-021 — Separación entre provisioning OCI y despliegue de aplicación
+- **Contexto:** Terraform creó correctamente el compartment, state remoto, red y VM de
+  prueba. GitHub-hosted runners no pudieron llegar por SSH sin ampliar `ADMIN_CIDRS`,
+  y OCI Run Command quedó bloqueado con comandos en estado `ACCEPTED` por un error de
+  autorización del agente.
+- **Decisión:** Terraform queda limitado a recursos OCI; cloud-init prepara el host; un
+  script idempotente de `recycling-infra` despliega imágenes inmutables por SSH desde
+  una estación administrativa autorizada. El token GHCR `read:packages` se ingresa
+  interactivamente y viaja solo por stdin; nunca ingresa a Terraform, state o
+  argumentos de proceso.
+- **Automatización futura:** un runner self-hosted aislado podrá invocar el mismo script
+  después de validar la primera entrega y definir su aislamiento/rotación. No se abre
+  SSH a los rangos dinámicos de GitHub Actions.
+- **Consecuencias:** el primer despliegue requiere una estación administrativa, pero
+  conserva una superficie de red mínima, permite rollback mediante tags inmutables y
+  separa el ciclo de infraestructura del ciclo de aplicación.
